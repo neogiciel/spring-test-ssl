@@ -1,0 +1,11 @@
+#------------------------------
+# Config Map
+#------------------------------
+#afficher le contenu d un config map
+kubectl describe configmaps coredns -n kube-system
+#afficher le contenu d un config map
+kubectl get configmap coredns -n kube-system -o jsonpath="{.data}"
+#autre commandes
+kubectl get cm coredns -n kube-system -o jsonpath='{.data.my\.file\.json}'
+#creer un pod
+kubectl run -it --rm aks-ssh --namespace dev --image=debian:stable

@@ -1,0 +1,161 @@
+#docker build
+docker build -t spring-test-ssl .
+docker tag spring-test-ssl neogicel/spring-test-ssl:1.094
+docker push neogicel/spring-test-ssl:1.094
+docker run -dit --name spring-test-ssl -p 8080:8080 neogicel/spring-test-ssl:1.094
+docker run -dit --name spring-test-ssl -p 8080:8080 spring-test-ssl
+
+#-----------------------------------------------
+# Certificat et keystore
+#-----------------------------------------------
+#les principales commandes
+https://toungafranck.com/les-commandes-de-keystore-java-keytool-les-plus-courantes/
+https://net-security.fr/securite/creer-javakeystore/
+
+#creer un jks
+keytool -genkey -alias localhost -keyalg RSA -keystore keystore.jks -keysize 2048
+#transformer au format
+keytool -importkeystore -srckeystore keystore.jks -destkeystore keystore.jks -deststoretype pkcs12
+#exporter le certificat vers crt
+keytool -export -alias localhost -file localhost.crt -keystore keystore.jks
+
+
+#importer des certificate
+keytool -import -trustcacerts -alias test4 -file certificate.crt -keystore keystore.jks
+keytool -import -trustcacerts -alias intermediate -file ca_bundel.crt -keystore keystore.jks
+keytool -import -trustcacerts -alias mydomain -file mydomain.crt -keystore keystore.jks
+#lister les certificats   
+keytool -v -list -storetype jks -keystore keystore.jks
+keytool -v -list -storetype jks -keystore truststore.jks
+
+#--------------------------------------------
+# Methode openssl
+#---------------------------------------------
+#creer le certiif (genere un fichier key et crt)
+openssl req -x509 -newkey rsa:2048 -nodes -keyout localhost.key -out localhost.crt -days 365
+#transformer au format pkcs12 (generer un fichier p12)
+openssl pkcs12 -export -inkey localhost.key -in localhost.crt -out localhost.p12
+#verifier la presence du certificat
+openssl pkcs12 -info -in localhost.p12
+#generer le keystore (generer le fichier jks)
+keytool -importkeystore -destkeystore localhost.jks -srckeystore localhost.p12 -srcstoretype pkcs12
+
+#--------------------------------------------
+# Methode test
+#---------------------------------------------
+keytool -genkeypair -alias localhost -keyalg RSA -keysize 2048 -storetype PKCS12 -keystore localhost.p12 -validity 3650
+keytool -genkeypair -alias localhost -keyalg RSA -keysize 2048 -keystore localhost.jks -validity 3650
+keytool -importkeystore -srckeystore localhost.jks -destkeystore localhost.p12 -deststoretype pkcs12
+
+#-------------------------------------
+# Premiere solution
+#-------------------------------------
+<roperties>
+	<java.version>17</java.version>
+	<spring-boot.run.jvmArguments></spring-boot.run.jvmArguments>
+</properties>
+
+Mettre dans le pom 
+<plugin>
+<groupId>org.springframework.boot</groupId>
+<artifactId>spring-boot-maven-plugin</artifactId>
+<configuration>
+<jvmArguments>
+    -Djavax.net.ssl.trustStore=${project.build.outputDirectory}/keystore.jks
+    -Djavax.net.ssl.trustStorePassword=matthias
+    -Djavax.net.ssl.keyStore=${project.build.outputDirectory}/keystore.jks
+    -Djavax.net.ssl.keyStorePassword=matthias
+    ${spring-boot.run.jvmArguments}
+</jvmArguments>
+</configuration>
+</plugin>
+
+
+#-------------------------------------
+# Deuxieme solution
+#-------------------------------------
+#Chemin Java
+C:\Program Files\Java\jdk-19/lib/security
+#Importer certificat dans cacerts
+#copier le cacerts dans un autre dossier puis l ecrase
+keytool -import -alias test4 -keystore cacerts -file certificate.crt
+
+#-------------------------------------
+# Troisieme solution solution
+#-------------------------------------
+<dependency>  
+    <groupId>org.apache.httpcomponents</groupId>
+    <artifactId>httpclient</artifactId>
+</dependency>
+
+#verification dans le code
+	@PostConstruct
+	public void initSsl(){
+		logger.info("[ClientSsl1Application/initSsl] **************** debut ***************************");
+
+		logger.info("[ClientSsl1Application/initSsl] javax.net.ssl.keyStore");
+		System.setProperty("javax.net.ssl.keyStore", Thread.currentThread().getContextClassLoader().getResource("keystore.jks").getPath());
+		System.setProperty("javax.net.ssl.keyStorePassword", "secret");
+		System.setProperty("javax.net.ssl.trustStore", Thread.currentThread().getContextClassLoader().getResource("keystore.jks").getPath());
+		System.setProperty("javax.net.ssl.trustStorePassword", "secret");
+		logger.info("[ClientSsl1Application/initSsl] **************** fin ***************************");
+
+		javax.net.ssl.HttpsURLConnection.setDefaultHostnameVerifier(
+			(hostname,sslSession) -> {
+				if (hostname.equals("localhost")) {
+					return true;
+				}
+				return false;
+			});
+	}
+
+#-------------------------------------
+# Problématique mTls
+#-------------------------------------
+C'est le keystore qui fournit le certificat client de l application
+L application n a pas besoin d etre configure en https
+
+#creer un certificat
+openssl req -x509 -newkey rsa:2048 -nodes -keyout localhost.key -out localhost.crt -days 365
+#transformer au format pkcs12 (generer un fichier p12)
+openssl pkcs12 -export -inkey localhost.key -in localhost.crt -out localhost.p12
+#verifier la presence du certificat
+openssl pkcs12 -info -in localhost.p12
+#generer le keystore (generer le fichier jks)
+keytool -importkeystore -destkeystore localhost.jks -srckeystore localhost.p12 -srcstoretype pkcs12
+
+#Mettre la bonne configuration du keystore 
+spring.ssl.bundle.jks.client.keystore.location=src/main/resources/localhost.jks
+
+#Mettre le certificat dans les secrets
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ac-local-racine-test
+  namespace: test
+stringData:
+  ca.crt: |
+    -----BEGIN CERTIFICATE-----
+    MIIEETCCAvmgAwIBAgIUYeoPHE0MFwPXkMr13t/jOrJJ0zEwDQYJKoZIhvcNAQEL
+    BQAwgZcxCzAJBgNVBAYTAmZyMRAwDgYDVQQIDAdnaXJvbmRlMREwDwYDVQQHDAhi
+    b3JkZWF1eDESMBAGA1UECgwJbmVvZ2ljaWVsMRIwEAYDVQQLDAluZW9naWNpZWwx
+    EjAQBgNVBAMMCWxvY2FsaG9zdDEnMCUGCSqGSIb3DQEJARYYbG9hY2FsaG9zdEBu
+    ZW9naWNpZWwuY29tMB4XDTI1MDkxMzE3Mjk1NVoXDTI2MDkxMzE3Mjk1NVowgZcx
+    CzAJBgNVBAYTAmZyMRAwDgYDVQQIDAdnaXJvbmRlMREwDwYDVQQHDAhib3JkZWF1
+    eDESMBAGA1UECgwJbmVvZ2ljaWVsMRIwEAYDVQQLDAluZW9naWNpZWwxEjAQBgNV
+    BAMMCWxvY2FsaG9zdDEnMCUGCSqGSIb3DQEJARYYbG9hY2FsaG9zdEBuZW9naWNp
+    ZWwuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAv+denlHDMRyu
+    2KpoRXtlx3r4fnN2hJ3R/ZWfdx2FszuGvlaYTM7hPvGTDKl+ZOYAthnNaLxRvRQ/
+    3aj2WRu3kvPYAGVEDBAnEtnwcAUTye4RcCKh3oWST7K8FA5uTTYtcKcjv1AJFztN
+    dY5EI4+qnutliuCdjbwrSL2Gt+HFhaFQi4f+VTcyyOKMJ3Fa1DeApZngeL+qjIN9
+    Q7PYHvWYLNaJ6PvwQlLzrBya8h9Lq24u6h4upimU19hi8oVB/4MTIzCsXTepJVvk
+    7kprhzwWupLxuORFjZf1Icuhxl71//ogC8sLj89ZFoLc4wPI/NupjCZ6GlPFM3on
+    tLRT3PSRjwIDAQABo1MwUTAdBgNVHQ4EFgQUKdVceGXCaTIdIOjFugythEYZE0Uw
+    HwYDVR0jBBgwFoAUKdVceGXCaTIdIOjFugythEYZE0UwDwYDVR0TAQH/BAUwAwEB
+    /zANBgkqhkiG9w0BAQsFAAOCAQEAPhiL/Bt90J+e0WjOCleTp7ARogi/azhmS7rJ
+    Tk09d08j5zWzOcJOpE5vBvJriBbLEEIqp1fX0e9RZt8CyiWu/EpMKGb0z0zN9IjK
+    jeaGqqtXABggH0QrDBkMfpDYxyGnz+wRKzAm5cw88yaUhKeovafKQrkrNjlp2GKJ
+    taf7cRxb11d/iuIApbRx1FHuU/v0NM8pdbyCLjIARrvk94a073JUvQKsrkOm8AK3
+    5R3Vggp5v78Jx1nhergey3/N8kPvulY3PtOD4mtvidngiGNo2X1UMFwRQ8Mi2dIu
+    b6DGGvhyGzzG3HE/7dUIjjGGFTis0xMpH0BkXyQdSf1+0Sd2wg==
+    -----END CERTIFICATE-----

@@ -1,0 +1,35 @@
+<html lang="en">
+<head>
+ <meta charset="UTF-8">
+ <title>Application test</title>
+ <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div>
+    <H2>Page Test</H2>
+    
+
+    <form action="/test" method="post" >
+    <div>
+        <label for="url">Url: </label>
+        <input type="text" name="url" id="url" value="https://test4.neogiciel.net" required />
+    </div>
+    <div>
+        <input type="submit" value="Test!" />
+    </div>
+    </form>
+
+    <div th:if="${erreur ne null}">
+    <hr width="100%">
+    Erreur : <span th:text="${erreur}"></span>
+    </div>
+    <div th:if="${response ne null}">
+    <hr width="100%">
+    <bold>Page Affiché:</bold><br>
+    <span th:text="${response}"></span>
+    </div>
+
+
+</div>
+</body>
+</html>

@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment # Kubernetes resource kind we are creating
+metadata:
+  name: spring-test-ssl
+  namespace: test
+spec:
+  selector:
+    matchLabels:
+      app: spring-test-ssl
+  replicas: 1
+#  minReadySeconds: 20
+#  strategy:
+#    type: RollingUpdate
+#    rollingUpdate:
+#     maxUnavailable: 25%
+#     maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: spring-test-ssl
+    spec:
+      containers:
+        - name: spring-test-ssl
+          image: neogicel/spring-test-ssl:1.094
+# Image that will be used to containers in the cluster
+          imagePullPolicy: Always
+          ports:
+            - name: web
+              containerPort: 8080
+            
+
+---
+apiVersion: v1 # Kubernetes API version
+kind: Service # Kubernetes resource kind we are creating
+metadata: # Metadata of the resource kind we are creating
+  name: spring-test-ssl
+  namespace: test
+spec:
+  ports:
+    - protocol: TCP
+      name: web
+      port: 8080
+  selector:
+    app: spring-test-ssl
+  type: LoadBalancer
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: spring-test-ssl
+  namespace: test
+  annotations:
+    spec.ingressClassName: traefik
+    #kubernetes.io/tls-acme: "true"
+    #service.beta.kubernetes.io/aws-load-balancer-backend-protocol: http
+    #service.beta.kubernetes.io/aws-load-balancer-ssl-cert: arn:aws:acm:xxxx
+    #service.beta.kubernetes.io/aws-load-balancer-ssl-ports: https
+    #traefik.ingress.kubernetes.io/router.entrypoints: web
+    #cert-manager.io/cluster-issuer: zerossl-clusterissuer
+spec:
+  tls:
+    - hosts:
+      - test8.neogiciel.net
+      #secretName: test8-tls
+      secretName: test8-tls
+  rules:
+    - host: test8.neogiciel.net
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: spring-test-ssl
+                port:
+                  number: 8080
